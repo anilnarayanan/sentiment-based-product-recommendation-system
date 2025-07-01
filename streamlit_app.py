@@ -14,22 +14,37 @@ def load_compressed_pickle(filename):
 def load_ratings():
     return load_compressed_pickle('models/ratings_matrix.pkl.gz')
 
-def recommend(username, ratings, top_n=5, neighbor_k=10):
+@st.cache_data
+def get_neighbors_map(ratings, k=10):
+    """
+    Precompute neighbors list for every user.
+    Returns a dict: user -> list of neighbors.
+    """
+    # Fill missing with 0
+    mat = ratings.fillna(0).values
+    sims = cosine_similarity(mat)  # shape (n_users, n_users)
+    users = ratings.index.tolist()
+    neigh = {}
+    for i, u in enumerate(users):
+        sim_series = pd.Series(sims[i], index=users)
+        # drop itself and keep top k
+        top = sim_series.drop(u).nlargest(k).index.tolist()
+        neigh[u] = top
+    return neigh
+
+def recommend(username, ratings, neighbors_map, top_n=5):
     if username not in ratings.index:
         return []
 
-    similarity_matrix = pd.DataFrame(
-        cosine_similarity(ratings.fillna(0)),
-        index=ratings.index,
-        columns=ratings.index
-    )
+    neighbors = neighbors_map.get(username, [])
+    if not neighbors:
+        return []
 
-    neighbors = similarity_matrix.loc[username].drop(username)
-    top_neighbors = neighbors.sort_values(ascending=False).head(neighbor_k).index
-
-    neighbor_ratings = ratings.loc[top_neighbors]
+    # Mean scores of neighbors
+    neighbor_ratings = ratings.loc[neighbors]
     mean_scores = neighbor_ratings.mean().sort_values(ascending=False)
 
+    # Exclude already-rated items
     user_rated = ratings.loc[username][ratings.loc[username] > 0].index
     recommendations = mean_scores.drop(user_rated, errors='ignore')
 
@@ -40,13 +55,15 @@ st.title("📦 Product Recommender")
 st.write("Enter your username and get top 5 recommended products based on similar users.")
 
 ratings = load_ratings()
+neighbors_map = get_neighbors_map(ratings, k=10)
 
 username = st.text_input("Enter username:")
 if st.button("Get Recommendations"):
-    if username.strip() == "":
+    username = username.strip()
+    if not username:
         st.warning("Please enter a valid username.")
     else:
-        top_items = recommend(username, ratings)
+        top_items = recommend(username, ratings, neighbors_map)
         if top_items:
             st.success("Top 5 Recommendations:")
             for i, item in enumerate(top_items, 1):
