@@ -1,58 +1,52 @@
 import streamlit as st
-import pickle
-import gzip
 import pandas as pd
 import numpy as np
+import gzip
+import pickle
+from sklearn.metrics.pairwise import cosine_similarity
 
-# Helper functions
+# Load ratings matrix only
 def load_compressed_pickle(filename):
     with gzip.open(filename, 'rb') as f:
         return pickle.load(f)
 
 @st.cache_resource
-def load_models():
-    model = load_compressed_pickle('models/user_cf_model.pkl.gz')
-    ratings = load_compressed_pickle('models/ratings_matrix.pkl.gz')
-    return model, ratings
+def load_ratings():
+    return load_compressed_pickle('models/ratings_matrix.pkl.gz')
 
-def recommend(username, model, ratings, top_n=5):
+def recommend(username, ratings, top_n=5, neighbor_k=10):
     if username not in ratings.index:
         return []
 
-    try:
-        # Convert external user ID (username) to internal surprise ID
-        inner_id = model.trainset.to_inner_uid(username)
-    except ValueError:
-        return []
+    similarity_matrix = pd.DataFrame(
+        cosine_similarity(ratings.fillna(0)),
+        index=ratings.index,
+        columns=ratings.index
+    )
 
-    # Get the 10 nearest neighbors (can tune this number)
-    neighbor_ids = model.get_neighbors(inner_id, k=10)
-    neighbor_usernames = [model.trainset.to_raw_uid(i) for i in neighbor_ids]
+    neighbors = similarity_matrix.loc[username].drop(username)
+    top_neighbors = neighbors.sort_values(ascending=False).head(neighbor_k).index
 
-    # Calculate mean ratings from neighbors
-    neighbor_ratings = ratings.loc[neighbor_usernames]
+    neighbor_ratings = ratings.loc[top_neighbors]
     mean_scores = neighbor_ratings.mean().sort_values(ascending=False)
 
-    # Remove items the user has already rated
     user_rated = ratings.loc[username][ratings.loc[username] > 0].index
     recommendations = mean_scores.drop(user_rated, errors='ignore')
 
     return recommendations.head(top_n).index.tolist()
 
-
 # Streamlit UI
 st.title("📦 Product Recommender")
 st.write("Enter your username and get top 5 recommended products based on similar users.")
 
-# Load models
-model, ratings = load_models()
+ratings = load_ratings()
 
 username = st.text_input("Enter username:")
 if st.button("Get Recommendations"):
     if username.strip() == "":
         st.warning("Please enter a valid username.")
     else:
-        top_items = recommend(username, model, ratings)
+        top_items = recommend(username, ratings)
         if top_items:
             st.success("Top 5 Recommendations:")
             for i, item in enumerate(top_items, 1):
