@@ -14,7 +14,7 @@ jsonschema==4.24.0
 jsonschema-specifications==2025.4.1
 MarkupSafe==3.0.2
 narwhals==1.45.0
-numpy==2.3.1
+numpy==1.26.4
 packaging==25.0
 pandas==2.3.0
 pillow==11.3.0
@@ -27,6 +27,7 @@ referencing==0.36.2
 requests==2.32.4
 rpds-py==0.25.1
 scikit-learn==1.7.0
+scikit-surprise==1.1.4
 scipy==1.16.0
 six==1.17.0
 smmap==5.0.2
